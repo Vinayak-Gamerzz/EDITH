@@ -26,6 +26,8 @@ import logging
 import os
 import re
 
+import httpx
+
 log = logging.getLogger("zenith.voice.tts")
 
 # Provider order: "edgetts" → "gtts". Edge (the same engine that powers
@@ -38,6 +40,9 @@ TTS_PROVIDER = os.getenv("TTS_PROVIDER", "edgetts").strip().lower()
 EDGE_VOICE = os.getenv("EDGE_VOICE", "en-IN-NeerjaNeural").strip()
 GTTS_TLD = os.getenv("GTTS_TLD", "co.in").strip()
 GTTS_LANG = os.getenv("GTTS_LANG", "en").strip()
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "7WTsm7gjq9UTqK6OeoXj").strip()
+ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5").strip()
 
 MAX_CHARS = 300  # spoken replies stay short — the full answer lives on screen
 
@@ -55,7 +60,22 @@ _MD_SCRUB = [
 
 
 def provider_name() -> str:
-    return TTS_PROVIDER
+    try:
+        from ..core.config import settings
+        return settings.tts_provider
+    except Exception:
+        return TTS_PROVIDER
+
+
+def elevenlabs_configured() -> bool:
+    try:
+        from ..core.config import settings
+        provider = settings.tts_provider
+        api_key = settings.elevenlabs_api_key
+        voice_id = settings.elevenlabs_voice_id
+    except Exception:
+        provider, api_key, voice_id = TTS_PROVIDER, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID
+    return provider == "elevenlabs" and bool(api_key and voice_id)
 
 
 def _clean(text: str) -> str:
@@ -76,7 +96,14 @@ def synthesize(text: str) -> bytes:
     if not clean:
         return b""
 
-    if TTS_PROVIDER == "edgetts":
+    provider = provider_name()
+    if provider == "elevenlabs":
+        audio = _elevenlabs(clean)
+        if audio:
+            return audio
+        log.warning("ElevenLabs unavailable; falling back to Edge TTS.")
+        provider = "edgetts"
+    if provider == "edgetts":
         out = _edge_tts_all(clean)
         if out:
             return out
@@ -95,6 +122,13 @@ async def synthesize_stream(text: str):
     if not clean:
         return
 
+    if provider_name() == "elevenlabs":
+        audio = _elevenlabs(clean)
+        if audio:
+            yield audio
+            return
+        log.warning("ElevenLabs unavailable; falling back to Edge TTS stream.")
+
     if TTS_PROVIDER == "edgetts":
         try:
             async for chunk in _edge_tts_stream(clean):
@@ -107,6 +141,34 @@ async def synthesize_stream(text: str):
     gtts_bytes = _gtts(clean)
     if gtts_bytes:
         yield gtts_bytes
+
+
+def _elevenlabs(text: str) -> bytes:
+    """Synthesize with the configured ElevenLabs voice."""
+    if not elevenlabs_configured():
+        log.warning("ElevenLabs selected but ELEVENLABS_API_KEY or voice ID is missing.")
+        return b""
+    try:
+        from ..core.config import settings
+        api_key = settings.elevenlabs_api_key
+        voice_id = settings.elevenlabs_voice_id
+        model = settings.elevenlabs_model
+    except Exception:
+        api_key, voice_id, model = ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, ELEVENLABS_MODEL
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    headers = {"xi-api-key": api_key, "accept": "audio/mpeg"}
+    payload = {
+        "text": text,
+        "model_id": model,
+        "voice_settings": {"stability": 0.48, "similarity_boost": 0.78},
+    }
+    try:
+        response = httpx.post(url, headers=headers, json=payload, timeout=45)
+        response.raise_for_status()
+        return response.content
+    except httpx.HTTPError as exc:
+        log.warning("ElevenLabs synthesis failed: %s", exc)
+        return b""
 
 
 def _edge_tts_all(text: str) -> bytes:

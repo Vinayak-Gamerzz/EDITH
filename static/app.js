@@ -60,6 +60,8 @@
   let recorder = null;
   let volume = 0;
   let micReady = false;       // getUserMedia resolved → UI shows "mic ready"
+  let selectedInputDevice = localStorage.getItem("zenith-voice-input") || "";
+  let selectedOutputDevice = localStorage.getItem("zenith-voice-output") || "";
   let voicePaused = false;    // listening paused (orb tap on mobile / G)
   let voiceStatusRemote = "voice · G";
   let zenithVoiceSpoken = true; // spoken replies on by default; toggled inline
@@ -2857,6 +2859,8 @@
     loadState();
     loadBriefing();
     loadVoiceConfig();
+    refreshVoiceDevices();
+    setTimeout(() => { if (!voiceOpen()) openVoice(); }, 0);
     window.addEventListener("beforeunload", () => ws && ws.close());
 
     // When the window crosses the desktop/mobile line, reconcile the drawer
@@ -3066,6 +3070,28 @@
     if (vClose) {
       vClose.addEventListener("click", (e) => { e.stopPropagation(); closeVoice(); });
     }
+
+    const inputDevice = $("voice-input-device");
+    const outputDevice = $("voice-output-device");
+    if (inputDevice) inputDevice.addEventListener("change", async () => {
+      selectedInputDevice = inputDevice.value;
+      localStorage.setItem("zenith-voice-input", selectedInputDevice);
+      if (voiceOpen()) {
+        if (micStream) micStream.getTracks().forEach((track) => track.stop());
+        micReady = false;
+        try { await ensureMic(); startMediaRecorder(); } catch (e) { refreshVoiceStatus(); }
+      }
+    });
+    if (outputDevice) outputDevice.addEventListener("change", () => {
+      selectedOutputDevice = outputDevice.value;
+      localStorage.setItem("zenith-voice-output", selectedOutputDevice);
+      if (window.zenithAudio) setAudioOutput(window.zenithAudio);
+      if (liveAudioCtx && selectedOutputDevice && typeof liveAudioCtx.setSinkId === "function") {
+        liveAudioCtx.setSinkId(selectedOutputDevice).catch(() => {});
+      }
+    });
+    const refreshDevices = $("voice-refresh-devices");
+    if (refreshDevices) refreshDevices.addEventListener("click", refreshVoiceDevices);
 
     // Keyboard: Space = push-to-talk while the voice layer is open; Esc closes.
     // Guarded so typing in the chat box or executing-log keeps working normally.
@@ -6426,9 +6452,14 @@
         c.max_utterance_ms = d.max_utterance_ms || 20000;
         voiceStatusRemote = d.stt_ready ? "voice" : "voice · mic offline";
         if (d.tts_stream === true) useStreamingTTS = true;
+        if (d.tts_provider === "elevenlabs") {
+          // ElevenLabs owns the spoken output; use STT -> agent -> ElevenLabs
+          // instead of opening Gemini Live, whose native voice is different.
+          useLiveStreaming = false;
+        }
         // When the server can run a persistent Gemini Live session, prefer
         // streaming voice over the per-utterance transcribe → TTS round trip.
-        if (d.live_ready === true) {
+        if (d.live_ready === true && d.tts_provider !== "elevenlabs") {
           useLiveStreaming = true;
           // The server restarted since our last refusal may have happened (it
           // only refreshes on config refresh) — give live streaming another
@@ -6808,6 +6839,9 @@
 
   function ensureLiveDecoder() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (selectedOutputDevice && typeof audioCtx.setSinkId === "function") {
+      audioCtx.setSinkId(selectedOutputDevice).catch(() => {});
+    }
     if (!liveGain) {
       liveGain = audioCtx.createGain();
       liveGain.gain.value = 0.95;
@@ -7146,10 +7180,11 @@
     }
     // echoCancellation + noiseSuppression keep Zenith's own voice out of the
     // VAD (so it doesn't self-trigger) while still letting you barge in.
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+    const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+    if (selectedInputDevice) audio.deviceId = { exact: selectedInputDevice };
+    micStream = await navigator.mediaDevices.getUserMedia({ audio });
     micReady = true;
+    refreshVoiceDevices();
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioCtx.createAnalyser();
@@ -7164,6 +7199,28 @@
     vad._calibN = 0;
     // Re-arm VAD before we draw so the first utterance can start immediately.
     vad.enabled = true;
+  }
+
+  function setAudioOutput(audio) {
+    if (!audio || !selectedOutputDevice || typeof audio.setSinkId !== "function") return;
+    audio.setSinkId(selectedOutputDevice).catch(() => {});
+  }
+
+  async function refreshVoiceDevices() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const input = $("voice-input-device");
+      const output = $("voice-output-device");
+      if (input) input.innerHTML = '<option value="">Default microphone</option>';
+      if (output) output.innerHTML = '<option value="">Default speaker</option>';
+      for (const device of devices) {
+        if (device.kind === "audioinput" && input) input.add(new Option(device.label || `Microphone ${input.length}`, device.deviceId));
+        if (device.kind === "audiooutput" && output) output.add(new Option(device.label || `Speaker ${output.length}`, device.deviceId));
+      }
+      if (input && selectedInputDevice) input.value = selectedInputDevice;
+      if (output && selectedOutputDevice) output.value = selectedOutputDevice;
+    } catch (e) { console.warn("Audio device enumeration failed:", e); }
   }
 
   async function openVoice() {
@@ -7322,6 +7379,7 @@
       const audio = new Audio(url);
       window.zenithAudio = audio;
       audio.volume = 0.95;
+      setAudioOutput(audio);
       audio.onended = () => {
         URL.revokeObjectURL(url);
         $("v-text").textContent = "keep talking — Zenith will listen.";
@@ -7361,6 +7419,7 @@
       const audio = new Audio(url);
       window.zenithAudio = audio;
       audio.volume = 0.95;
+      setAudioOutput(audio);
       audio.onended = () => {
         URL.revokeObjectURL(url);
         $("v-text").textContent = "keep talking — Zenith will listen.";

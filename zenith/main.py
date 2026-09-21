@@ -922,6 +922,8 @@ async def api_voice_status():
         "stt_language": stt.STT_LANGUAGE,
         "tts_ready": True,
         "tts_provider": tts.provider_name(),
+        "tts_voice_id": tts.ELEVENLABS_VOICE_ID if tts.provider_name() == "elevenlabs" else "",
+        "tts_configured": tts.elevenlabs_configured() if tts.provider_name() == "elevenlabs" else True,
         "tts_stream": True,
         # Live-conversation tuning (ms). The client adjusts its VAD to these.
         "silence_ms": int(os.getenv("VOICE_SILENCE_MS", "700")),

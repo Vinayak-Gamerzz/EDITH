@@ -26,7 +26,7 @@ _RESEND_URL = "https://api.resend.com/emails"
 
 def _imap_ok() -> bool:
     # Gmail app password OR legacy IMAP creds.
-    return bool(settings.gmail_user and (settings.gmail_app_password or settings.mail_imap_pass))
+    return bool(_imap_accounts())
 
 
 def _resend_ok() -> bool:
@@ -40,6 +40,31 @@ def _imap_creds():
     user = settings.gmail_user or settings.mail_imap_user
     password = settings.gmail_app_password or settings.mail_imap_pass
     return settings.mail_imap_host or "imap.gmail.com", user, password
+
+
+def _imap_accounts() -> list[dict[str, str]]:
+    """Return configured accounts, retaining the original single-account env API."""
+    accounts = list(getattr(settings, "email_accounts", []) or [])
+    if accounts:
+        return accounts
+    host, user, password = _imap_creds()
+    if user and password:
+        return [{"name": user, "email": user, "password": password, "host": host}]
+    return []
+
+
+def account_list() -> list[dict[str, str]]:
+    return [{"name": a["name"], "email": a["email"], "host": a["host"]} for a in _imap_accounts()]
+
+
+def _select_account(account: str = "") -> dict[str, str] | None:
+    accounts = _imap_accounts()
+    if not accounts:
+        return None
+    needle = (account or "").strip().lower()
+    if not needle:
+        return accounts[0]
+    return next((item for item in accounts if needle in {item["name"].lower(), item["email"].lower()}), None)
 
 
 def _fmt_email_date(raw: str | None) -> str:
@@ -68,16 +93,17 @@ def _fmt_email_date(raw: str | None) -> str:
     return dt.strftime("%Y-%m-%d %H:%M")
 
 
-async def search(query: str = "", n: int = 5) -> str:
+async def search(query: str = "", n: int = 5, account: str = "") -> str:
     """Search the inbox. Returns uid · Date · From · Subject per line.
 
     The date matters — Zenith needs to know WHEN an email arrived, not just
     that it exists, or "any new mail?" has no answer.
     """
-    if not _imap_ok():
+    selected = _select_account(account)
+    if not selected:
         return ("Email isn't connected yet — set GMAIL_USER + GMAIL_APP_PASSWORD "
-                "in .env (the app password for 2-Step verification).")
-    host, user, password = _imap_creds()
+                "or EMAIL_ACCOUNTS in .env (the app password for 2-Step verification).")
+    host, user, password = selected["host"], selected["email"], selected["password"]
     try:
         import imaplib
     except ImportError:
@@ -108,20 +134,21 @@ async def search(query: str = "", n: int = 5) -> str:
             d = _fmt_email_date(msg_obj.get("Date"))
             lines.append(f"{uid.decode()} · {d} · {frm} · {thdr}")
         M.logout()
-        return "\n".join(lines) or "No messages found."
+        return f"[{selected['name']}]\n" + ("\n".join(lines) or "No messages found.")
     except Exception as exc:
         return f"[mail] {exc}"
 
 
-async def read(uid: str) -> str:
+async def read(uid: str, account: str = "") -> str:
     """Fetch one message and return Date/From/Subject/plain-text body.
 
     The Date is essential context — the model must not present an old email as
     fresh, or guess a time that isn't there.
     """
-    if not _imap_ok():
+    selected = _select_account(account)
+    if not selected:
         return "Email isn't connected yet."
-    host, user, password = _imap_creds()
+    host, user, password = selected["host"], selected["email"], selected["password"]
     try:
         import imaplib
     except ImportError:

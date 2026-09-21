@@ -293,6 +293,60 @@ SECRETS_CATALOG = [
         ],
     },
 
+    {
+        "key": "TTS_PROVIDER",
+        "label": "Spoken Voice Provider",
+        "category": "voice",
+        "category_label": "Voice & Live Audio",
+        "category_icon": "mic",
+        "field_type": "select",
+        "options": [
+            {"value": "edgetts", "label": "Edge Neural (free)"},
+            {"value": "elevenlabs", "label": "ElevenLabs (premium voice)"},
+        ],
+        "required": False,
+        "is_secret": False,
+        "default": "edgetts",
+        "description": "Choose ElevenLabs to use the configured Zenith voice ID in voice mode.",
+        "where_to_get_url": "https://elevenlabs.io/app/settings/api-keys",
+        "where_to_get_label": "ElevenLabs API Keys",
+        "guide_steps": [
+            "Choose ElevenLabs for the requested natural voice.",
+            "Add ELEVENLABS_API_KEY and keep the preconfigured voice ID.",
+        ],
+    },
+    {
+        "key": "ELEVENLABS_API_KEY",
+        "label": "ElevenLabs API Key",
+        "category": "voice",
+        "category_label": "Voice & Live Audio",
+        "category_icon": "mic",
+        "required": False,
+        "is_secret": True,
+        "placeholder": "sk_...",
+        "description": "Enables the configured ElevenLabs voice for Zenith's spoken replies.",
+        "where_to_get_url": "https://elevenlabs.io/app/settings/api-keys",
+        "where_to_get_label": "ElevenLabs API Keys",
+        "guide_steps": [
+            "Open ElevenLabs API keys and create a key.",
+            "Store it as a secret in Zenith settings.",
+        ],
+    },
+    {
+        "key": "ELEVENLABS_VOICE_ID",
+        "label": "ElevenLabs Voice ID",
+        "category": "voice",
+        "category_label": "Voice & Live Audio",
+        "category_icon": "mic",
+        "required": False,
+        "is_secret": False,
+        "default": "7WTsm7gjq9UTqK6OeoXj",
+        "description": "Voice used by ElevenLabs. Zenith includes the requested voice by default.",
+        "where_to_get_url": "https://elevenlabs.io/voices/7WTsm7gjq9UTqK6OeoXj",
+        "where_to_get_label": "Open requested ElevenLabs voice",
+        "guide_steps": ["Leave the default voice ID or replace it with another ElevenLabs voice."],
+    },
+
     # ── Category 4: Email & Communication ─────────────────────────────────────
     {
         "key": "RESEND_API_KEY",
@@ -344,6 +398,24 @@ SECRETS_CATALOG = [
         "where_to_get_label": "Gmail",
         "guide_steps": [
             "Enter your full Gmail or Google Workspace address."
+        ],
+    },
+    {
+        "key": "EMAIL_ACCOUNTS",
+        "label": "Additional Email Accounts (JSON)",
+        "category": "email",
+        "category_label": "Email & Communication",
+        "category_icon": "mail",
+        "required": False,
+        "is_secret": True,
+        "field_type": "textarea",
+        "placeholder": "[{\"name\":\"work\",\"email\":\"you@work.com\",\"password\":\"app-password\"}]",
+        "description": "Connect multiple Gmail or IMAP inboxes. Use an app password for each account.",
+        "where_to_get_url": "https://myaccount.google.com/apppasswords",
+        "where_to_get_label": "Google Account App Passwords",
+        "guide_steps": [
+            "Add one JSON object per account with name, email, password, and optional host.",
+            "Use email_search(account='work') or the account email to select an inbox.",
         ],
     },
     {

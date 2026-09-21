@@ -22,7 +22,8 @@ def client():
 
 def test_live_voice_available_and_defaults():
     """Verify live voice availability and fallback model ordering."""
-    assert live.available() is True
+    from zenith.core.config import settings
+    assert live.available() is (settings.tts_provider != "elevenlabs")
     with patch.object(live, "LIVE_MODELS", [m.strip() for m in live._DEFAULT_LIVE_MODELS.split(",") if m.strip()]):
         models = live.configured_models()
         assert len(models) >= 4
@@ -31,6 +32,19 @@ def test_live_voice_available_and_defaults():
         assert models[2] == "gemini-3.1-flash-live-preview"
         assert models[3] == "gemini-2.5-flash-native-audio-latest"
     assert live.LIVE_VOICE_NAME == "Aoede"
+
+
+def test_elevenlabs_voice_configuration_is_bundled():
+    from zenith.voice import tts
+
+    assert tts.ELEVENLABS_VOICE_ID == "7WTsm7gjq9UTqK6OeoXj"
+    assert tts.provider_name() in {"edgetts", "elevenlabs", "gtts"}
+
+
+def test_elevenlabs_provider_disables_gemini_live(monkeypatch):
+    from zenith.core.config import settings
+    monkeypatch.setattr(settings, "tts_provider", "elevenlabs")
+    assert live.available() is False
 
 
 def test_strip_conversational_cliches():

@@ -7,6 +7,7 @@ module needs to find its capabilities comes from this object.
 from __future__ import annotations
 
 import os
+import json
 import shutil
 from pathlib import Path
 
@@ -28,6 +29,30 @@ def _as_list(name: str) -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
+def _email_accounts() -> list[dict[str, str]]:
+    """Parse optional multi-mailbox JSON without exposing credentials in logs."""
+    raw = os.getenv("EMAIL_ACCOUNTS", "").strip()
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(value, list):
+        return []
+    accounts = []
+    for item in value:
+        if not isinstance(item, dict) or not item.get("email") or not item.get("password"):
+            continue
+        accounts.append({
+            "name": str(item.get("name") or item["email"]),
+            "email": str(item["email"]).strip(),
+            "password": str(item["password"]).strip(),
+            "host": str(item.get("host") or "imap.gmail.com").strip(),
+        })
+    return accounts
+
+
 # Well-known containers Zenith may start/stop/restart as discrete ops.
 DEFAULT_GUARDED_CONTAINERS = (
     "zenith,hostpheus,codraw-app,jellyfin,sonarr,radarr,prowlarr,"
@@ -47,6 +72,7 @@ class Settings:
     user_bio: str = os.getenv("USER_BIO", "").strip()
     user_birthday: str = os.getenv("USER_BIRTHDAY", "").strip()
     user_hobbies: str = os.getenv("USER_HOBBIES", "").strip()
+    assistant_name: str = os.getenv("ASSISTANT_NAME", "Edith").strip() or "Edith"
     github_user: str = os.getenv("GITHUB_USER", "").strip()
     zenith_mode: str = os.getenv("ZENITH_MODE", "setup").strip().lower()
 
@@ -79,6 +105,10 @@ class Settings:
     groq_whisper_model: str = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo").strip()
     live_voice_enabled: bool = _flag("LIVE_VOICE_ENABLED", default=True)
     edge_voice: str = os.getenv("EDGE_VOICE", "en-IN-NeerjaNeural").strip()
+    tts_provider: str = os.getenv("TTS_PROVIDER", "edgetts").strip().lower()
+    elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    elevenlabs_voice_id: str = os.getenv("ELEVENLABS_VOICE_ID", "7WTsm7gjq9UTqK6OeoXj").strip()
+    elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5").strip()
 
     # ── Server ────────────────────────────────────────────────────────────
     host: str = os.getenv("HOST", "0.0.0.0")
@@ -130,6 +160,7 @@ class Settings:
     mail_imap_pass: str = os.getenv("MAIL_IMAP_PASS", "").strip()
     gmail_app_password: str = os.getenv("GMAIL_APP_PASSWORD", os.getenv("MAIL_IMAP_PASS", "")).strip()
     gmail_user: str = os.getenv("GMAIL_USER", os.getenv("MAIL_IMAP_USER", "")).strip()
+    email_accounts: list[dict[str, str]] = _email_accounts()
     # Outbound: Resend
     resend_api_key: str = os.getenv("RESEND_API_KEY", "").strip()
     resend_from: str = os.getenv("RESEND_FROM", "Zenith <zenith@agm.quest>").strip()
@@ -231,6 +262,7 @@ class Settings:
         self.user_bio = os.getenv("USER_BIO", "").strip()
         self.user_birthday = os.getenv("USER_BIRTHDAY", "").strip()
         self.user_hobbies = os.getenv("USER_HOBBIES", "").strip()
+        self.assistant_name = os.getenv("ASSISTANT_NAME", "Edith").strip() or "Edith"
         self.zenith_mode = os.getenv("ZENITH_MODE", "setup").strip().lower()
         self.auth_mode = os.getenv("AUTH_MODE", "none").strip().lower()
 
@@ -255,6 +287,10 @@ class Settings:
         self.groq_whisper_model = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo").strip()
         self.live_voice_enabled = _flag("LIVE_VOICE_ENABLED", default=True)
         self.edge_voice = os.getenv("EDGE_VOICE", "en-IN-NeerjaNeural").strip()
+        self.tts_provider = os.getenv("TTS_PROVIDER", "edgetts").strip().lower()
+        self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+        self.elevenlabs_voice_id = os.getenv("ELEVENLABS_VOICE_ID", "7WTsm7gjq9UTqK6OeoXj").strip()
+        self.elevenlabs_model = os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5").strip()
 
         self.host = os.getenv("HOST", "0.0.0.0")
         self.port = int(os.getenv("ZENITH_PORT", os.getenv("PORT", "8005")))
@@ -275,6 +311,7 @@ class Settings:
         self.mail_imap_pass = os.getenv("MAIL_IMAP_PASS", "").strip()
         self.gmail_app_password = os.getenv("GMAIL_APP_PASSWORD", os.getenv("MAIL_IMAP_PASS", "")).strip()
         self.gmail_user = os.getenv("GMAIL_USER", os.getenv("MAIL_IMAP_USER", "")).strip()
+        self.email_accounts = _email_accounts()
         self.RESEND_API_KEY=your_resend_api_key_here
         self.resend_from = os.getenv("RESEND_FROM", "Zenith <zenith@agm.quest>").strip()
         self.resend_reply_to = os.getenv("RESEND_REPLY_TO", "zenith@agm.quest").strip()

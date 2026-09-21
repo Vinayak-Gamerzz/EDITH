@@ -1317,6 +1317,40 @@ body::before {
   background: var(--panel);
   border-color: var(--line-strong);
 }
+.voice-devices {
+  width: min(460px, 100%);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  text-align: left;
+}
+.voice-devices label {
+  display: grid;
+  gap: 5px;
+  color: var(--ink-dim);
+  font: 0.68rem var(--mono, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.voice-devices select,
+.voice-devices button {
+  min-height: 34px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--ink);
+  font: 0.78rem var(--sans, sans-serif);
+}
+.voice-devices button {
+  grid-column: 1 / -1;
+  cursor: pointer;
+}
+@media (max-width: 520px) {
+  .voice-devices { grid-template-columns: 1fr; }
+  .voice-devices button { grid-column: auto; }
+}
 .orb-wrap, .orb, .orb-canvas, .vmod, .v-close {
   user-select: none;
   -webkit-user-select: none;

@@ -504,15 +504,15 @@ async def mc_players() -> str:
 # ────────────────────────────────────────────────────────────────────── email ──
 
 
-async def email_search(query: str = "", n: int = 5) -> str:
+async def email_search(query: str = "", n: int = 5, account: str = "") -> str:
     """Search the configured mailbox; returns From/Subject/date lines."""
     from . import mail
-    return await mail.search(query, n)
+    return await mail.search(query, n, account)
 
 
-async def email_read(uid: str) -> str:
+async def email_read(uid: str, account: str = "") -> str:
     from . import mail
-    return await mail.read(uid)
+    return await mail.read(uid, account)
 
 
 def _normalize_email_args(to: str, subject: str, body: str) -> tuple[str, str, str]:

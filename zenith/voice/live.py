@@ -183,6 +183,11 @@ def classify_ack(calls: list[dict] | dict) -> tuple[str, str]:
 def available() -> bool:
     """Whether a Live model is configured. The actual auth depends on having a
     key (checked at session-time so we can fall back cleanly)."""
+    # ElevenLabs is a user-selected output voice and needs the classic text
+    # path so its voice ID controls the spoken response.
+    from ..core.config import settings
+    if getattr(settings, "tts_provider", os.getenv("TTS_PROVIDER", "edgetts")).strip().lower() == "elevenlabs":
+        return False
     return LIVE_ENABLED and bool(LIVE_MODELS)
 
 

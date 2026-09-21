@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .config import settings
+from ..integrations.ecc_catalog import tool_ecc_catalog, tool_ecc_get, tool_ecc_search
 
 
 class ToolValidationError(Exception):
@@ -120,6 +121,9 @@ EXECUTIVE_TOOL_NAMES = [
     "list_dir",
     "get_host_paths",
     "get_system_info",
+    "ecc_catalog",
+    "ecc_search",
+    "ecc_get",
 ]
 
 
@@ -964,14 +968,24 @@ async def tool_mc_restart() -> str:
     return await mc_restart()
 
 
-async def tool_email_search(query: str = "") -> str:
+async def tool_email_search(query: str = "", account: str = "") -> str:
     from zenith.tools.homelab import email_search
-    return await email_search(query)
+    return await email_search(query, account=account)
 
 
-async def tool_email_read(uid: str) -> str:
+async def tool_email_read(uid: str, account: str = "") -> str:
     from zenith.tools.homelab import email_read
-    return await email_read(uid)
+    return await email_read(uid, account=account)
+
+
+async def tool_email_accounts() -> str:
+    from zenith.tools import mail
+    accounts = mail.account_list()
+    if not accounts:
+        return "No email accounts configured."
+    return "Configured email accounts:\n" + "\n".join(
+        f"- {item['name']}: {item['email']} ({item['host']})" for item in accounts
+    )
 
 
 async def tool_email_draft(to: str, subject: str, body: str, attachment_path: str = "") -> str:
@@ -2377,6 +2391,32 @@ register("list_available_tools", "List all system tools available in Zenith with
     },
 }, tool_list_available_tools)
 
+register("ecc_catalog", "List the imported ECC agents, skills, and commands available as read-only instruction assets.", {
+    "type": "object",
+    "properties": {
+        "kind": {"type": "string", "enum": ["", "agents", "skills", "commands"]},
+    },
+}, tool_ecc_catalog)
+
+register("ecc_search", "Search ECC agents, skills, and commands by name or instruction content.", {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string"},
+        "kind": {"type": "string", "enum": ["", "agents", "skills", "commands"]},
+        "limit": {"type": "integer", "default": 20},
+    },
+    "required": ["query"],
+}, tool_ecc_search)
+
+register("ecc_get", "Read one ECC agent, skill, or command instruction asset by name or relative path.", {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "kind": {"type": "string", "enum": ["", "agents", "skills", "commands"]},
+    },
+    "required": ["name"],
+}, tool_ecc_get)
+
 
 register("agent_submit", "Delegate a substantial coding/engineering task to the Antigravity worker (a full coding agent on the Pi). Use for 'build', 'create', 'implement', 'refactor', 'port', 'fix a bug across files', 'docker set up', 'web app/service/project', etc. The worker runs in the background and you can poll agent_status / agent_output / agent_artifacts and send agent_followup. Distill the user's intent into a tight brief (task, workspace, requirements|constraints|acceptance separated by '|').", {
     "type": "object",
@@ -2585,14 +2625,25 @@ register("mc_restart", "Restart the Twilight-MC composition.", {
 
 register("email_search", "Search the connected mailbox. Returns uid · From · Subject.", {
     "type": "object",
-    "properties": {"query": {"type": "string", "default": ""}},
+    "properties": {
+        "query": {"type": "string", "default": ""},
+        "account": {"type": "string", "description": "Optional mailbox email or configured account name."},
+    },
 }, tool_email_search)
 
 register("email_read", "Fetch one email by uid.", {
     "type": "object",
-    "properties": {"uid": {"type": "string"}},
+    "properties": {
+        "uid": {"type": "string"},
+        "account": {"type": "string", "description": "Optional mailbox email or configured account name."},
+    },
     "required": ["uid"],
 }, tool_email_read)
+
+register("email_accounts", "List configured email inboxes without exposing passwords.", {
+    "type": "object",
+    "properties": {},
+}, tool_email_accounts)
 
 register("email_draft", "Send an email immediately to a recipient (to, subject, body, optional attachment_path/attachment_paths). Sends directly without preview or confirmation. Supports one or more file attachments.", {
     "type": "object",
