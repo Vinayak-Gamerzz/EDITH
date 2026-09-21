@@ -962,10 +962,11 @@ async def test_gemini_api_key(api_key: str) -> dict[str, Any]:
     if not key:
         return {"valid": False, "error": "API key cannot be empty."}
 
-    # If OAuth AQ./ya29. token, handle differently if needed; standard API keys start with AIza
+    # Gemini accepts AQ./AIza credentials as API keys in the query string.
+    # Only ya29.* is an OAuth bearer token.
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={key}"
     headers = {"Content-Type": "application/json"}
-    if key.startswith("AQ.") or key.startswith("ya29."):
+    if key.startswith("ya29."):
         headers["Authorization"] = f"Bearer {key}"
         url = "https://generativelanguage.googleapis.com/v1beta/models"
 

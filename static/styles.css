@@ -1140,6 +1140,13 @@ body::before {
 .panel-title { font-size: 0.68rem; font-weight: 600; color: var(--ink-faint); margin-bottom: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
 .panel-title.sub { margin-bottom: 8px; }
 .agenda-list { display: flex; flex-direction: column; gap: 8px; }
+.chat-history-list { display: flex; flex-direction: column; gap: 5px; }
+.chat-history-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.chat-history-item:hover, .chat-history-item.active { background: var(--panel-2); border-color: var(--line); }
+.chat-history-item.active { color: var(--accent-ink); }
+.chat-history-copy { min-width: 0; flex: 1; }
+.chat-history-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
+.chat-history-meta { display: block; margin-top: 3px; color: var(--ink-faint); font-size: 0.68rem; }
 .agenda-item { display: flex; align-items: baseline; gap: 9px; font-size: 0.84rem; line-height: 1.4; }
 .agenda-tag { flex-shrink: 0; font-size: 0.7rem; color: var(--ink-faint); font-family: var(--mono); }
 .agenda-text { color: var(--ink); }

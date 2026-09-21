@@ -586,6 +586,7 @@
     <aside class="side" id="sidebar">
       <div class="side-hdr">
         <div class="side-tabs" role="tablist">
+          <button type="button" class="side-tab" id="tab-chats" data-tab="chats">Chats</button>
           <button type="button" class="side-tab active" id="tab-agenda" data-tab="agenda">Agenda</button>
           <button type="button" class="side-tab" id="tab-notes" data-tab="notes">Notes</button>
           <button type="button" class="side-tab" id="tab-homelab" data-tab="homelab">Homelab</button>
@@ -593,6 +594,16 @@
         <button class="side-close-btn" id="side-close-btn" title="Close sidebar">✕</button>
       </div>
       <div class="side-scroll">
+        <!-- Chat history -->
+        <div class="side-tab-pane" id="pane-chats" style="display:none">
+          <div class="panel">
+            <div class="panel-head-row">
+              <div class="panel-title">Chat history</div>
+              <button type="button" class="side-refresh-btn" id="new-chat-btn" title="Start a new chat" aria-label="Start a new chat">+</button>
+            </div>
+            <div class="chat-history-list" id="chat-history-list"><div class="placeholder">No chats yet.</div></div>
+          </div>
+        </div>
         <!-- Tab 1: Agenda -->
         <div class="side-tab-pane active" id="pane-agenda">
           <div class="panel" id="agenda-panel">

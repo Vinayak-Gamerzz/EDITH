@@ -778,7 +778,7 @@ if ($IsHealthy) {
     Write-Ok "Healthcheck verified: Zenith is online and responsive!"
     $tokenFile = Join-Path $env:USERPROFILE ".gemini\antigravity-cli\antigravity-oauth-token"
     if (-not (Test-Path $tokenFile)) {
-        Write-Host "`n  💡 First-Time Antigravity Setup:" -ForegroundColor Yellow
+        Write-Host "`n  First-Time Antigravity Setup:" -ForegroundColor Yellow
         Write-Host "     To enable autonomous coding agents, run 'agy' once in your terminal to sign in with Google.`n" -ForegroundColor DarkGray
     }
 } else {
@@ -807,21 +807,9 @@ try {
     Write-Info "Please open $TargetUrl in your web browser."
 }
 
-# Summary Banner
-Write-Host "`n╔══════════════════════════════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║                                                                          ║" -ForegroundColor Green
-Write-Host "║                   ✦  ZENITH IS READY & OPERATIONAL  ✦                   ║" -ForegroundColor Green
-Write-Host "║                                                                          ║" -ForegroundColor Green
-Write-Host "║   Web Interface:     $TargetUrl                               ║" -ForegroundColor Green
-Write-Host "║   Container:         zenith-core                                         ║" -ForegroundColor Green
-Write-Host "║   Status:            Healthy (HTTP 200 OK)                               ║" -ForegroundColor Green
-Write-Host "║   System Profile:    ~/.zenith/system-info.json                          ║" -ForegroundColor Green
-Write-Host "║                                                                          ║" -ForegroundColor Green
-Write-Host "║   Useful Commands:                                                       ║" -ForegroundColor Green
-Write-Host "║     Stream live logs:   docker compose logs -f                           ║" -ForegroundColor Green
-Write-Host "║     Stop Zenith:        docker compose down                              ║" -ForegroundColor Green
-Write-Host "║     Restart Zenith:     docker compose restart                           ║" -ForegroundColor Green
-Write-Host "║     Update version:     .\zenith-install.ps1 -Update                     ║" -ForegroundColor Green
-Write-Host "║     Repair stack:       .\zenith-install.ps1 -Repair                     ║" -ForegroundColor Green
-Write-Host "║                                                                          ║" -ForegroundColor Green
-Write-Host "╚══════════════════════════════════════════════════════════════════════════╝`n" -ForegroundColor Green
+# Summary
+Write-Host "" -ForegroundColor Green
+Write-Host "Zenith is ready and operational." -ForegroundColor Green
+Write-Host "Web interface: $TargetUrl" -ForegroundColor Green
+Write-Host "Container: zenith-core (healthy)" -ForegroundColor Green
+Write-Host "Useful commands: docker compose logs -f, docker compose down, docker compose restart" -ForegroundColor Green

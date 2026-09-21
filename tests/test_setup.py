@@ -1,5 +1,6 @@
 """Tests for Zenith Setup & Secrets Management Engine."""
 import pytest
+from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from zenith.core import config, setup
@@ -56,6 +57,23 @@ def test_setup_test_key_validation(client):
     assert resp_bogus.status_code == 200
     assert resp_bogus.json()["valid"] is False
     assert "error" in resp_bogus.json()
+
+
+def test_aq_key_uses_api_key_query_parameter():
+    response = type("Response", (), {
+        "status_code": 200,
+        "json": lambda self: {"models": [{"name": "models/gemini-flash"}]},
+    })()
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, return_value=response) as mock_get:
+        result = __import__("asyncio").run(
+            setup.test_gemini_api_key("AQ.test-key")
+        )
+
+    assert result["valid"] is True
+    called_url = mock_get.await_args.args[0]
+    assert "?key=AQ.test-key" in called_url
+    assert mock_get.await_args.kwargs["headers"] == {"Content-Type": "application/json"}
 
 
 def test_save_configuration_requires_gemini_key(client, monkeypatch):

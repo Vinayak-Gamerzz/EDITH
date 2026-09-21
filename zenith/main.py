@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -366,6 +367,29 @@ def integ_r2_ok() -> bool:
 @app.get("/api/memory")
 async def memory():
     return {"memories": store.all_memories(), "graph": store.graph_export()}
+
+
+@app.get("/api/chats")
+async def chats():
+    return {"chats": store.list_chat_threads()}
+
+
+@app.post("/api/chats")
+async def create_chat():
+    return store.create_chat_thread(str(uuid.uuid4()))
+
+
+@app.get("/api/chats/{thread_id}")
+async def chat(thread_id: str):
+    result = store.get_chat_thread(thread_id)
+    if not result:
+        return JSONResponse({"error": "Chat not found"}, status_code=404)
+    return result
+
+
+@app.delete("/api/chats/{thread_id}")
+async def delete_chat(thread_id: str):
+    return {"deleted": store.delete_chat_thread(thread_id)}
 
 
 @app.get("/oauth/callback")
@@ -1337,10 +1361,14 @@ async def proxy_gev_apis(request: Request, gev_endpoint: str):
 @app.websocket("/ws/chat")
 async def ws_chat(websocket: WebSocket):
     await websocket.accept()
+    thread_id = websocket.query_params.get("thread_id") or str(uuid.uuid4())
+    store.create_chat_thread(thread_id)
+    _orpheus.activate_thread(thread_id)
     await websocket.send_json({
         "type": "status",
         "message": "connected",
         "user": settings.user_name or "Friend",
+        "thread_id": thread_id,
     })
 
     # Re-sync any pending confirmations immediately to the newly connected/reconnected client
@@ -1502,6 +1530,17 @@ async def ws_chat(websocket: WebSocket):
                     active_turn_task.cancel()
                 _orpheus.restart()
                 await websocket.send_json({"type": "cleared"})
+                continue
+
+            if mtype == "switch_chat":
+                if active_turn_task and not active_turn_task.done():
+                    active_turn_task.cancel()
+                requested = str(data.get("thread_id") or "").strip()
+                if requested:
+                    thread_id = requested
+                    store.create_chat_thread(thread_id)
+                    _orpheus.activate_thread(thread_id)
+                    await websocket.send_json({"type": "chat_switched", "thread_id": thread_id})
                 continue
 
             # Confirmation decision from the UI dock → satisfy a pending gate.

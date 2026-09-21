@@ -65,6 +65,25 @@ CREATE TABLE IF NOT EXISTS conversations (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS chat_threads (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT 'New chat',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages(thread_id, id);
+CREATE INDEX IF NOT EXISTS idx_chat_threads_updated ON chat_threads(updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS reminders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL,
@@ -181,7 +200,32 @@ def init_db() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_relations_triplet ON relations(source, rel, target)"
         )
         conn.commit()
+        _migrate_legacy_conversations(conn)
     _seed_defaults()
+
+
+def _migrate_legacy_conversations(conn: sqlite3.Connection) -> None:
+    """Keep the pre-thread conversation log available in the history UI."""
+    legacy_count = conn.execute("SELECT COUNT(*) AS c FROM conversations").fetchone()["c"]
+    if not legacy_count:
+        return
+    conn.execute(
+        "INSERT OR IGNORE INTO chat_threads (id, title) VALUES ('legacy-history', 'Previous conversations')"
+    )
+    conn.execute(
+        """INSERT INTO chat_messages (thread_id, role, content, timestamp)
+           SELECT 'legacy-history', c.role, c.content, c.timestamp
+           FROM conversations c
+           WHERE NOT EXISTS (
+             SELECT 1 FROM chat_messages m
+             WHERE m.thread_id = 'legacy-history'
+               AND m.role = c.role AND m.content = c.content AND m.timestamp = c.timestamp
+           )"""
+    )
+    conn.execute(
+        "UPDATE chat_threads SET updated_at = CURRENT_TIMESTAMP WHERE id = 'legacy-history'"
+    )
+    conn.commit()
 
 
 def _seed_defaults() -> None:
@@ -313,7 +357,77 @@ def graph_stats() -> dict[str, int]:
     return {"entities": n, "edges": e}
 
 
-# ─── Conversations (shadow log) ───────────────────────────────────────────────
+# ─── Conversations ────────────────────────────────────────────────────────────
+
+def create_chat_thread(thread_id: str, title: str = "New chat") -> dict[str, str]:
+    with _connect() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO chat_threads (id, title) VALUES (?, ?)",
+            (thread_id, (title or "New chat").strip()[:120] or "New chat"),
+        )
+        row = conn.execute(
+            "SELECT id, title, created_at, updated_at FROM chat_threads WHERE id = ?",
+            (thread_id,),
+        ).fetchone()
+        conn.commit()
+    return dict(row)
+
+
+def list_chat_threads() -> list[dict[str, str]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT t.id, t.title, t.created_at, t.updated_at,
+                      COUNT(m.id) AS message_count
+               FROM chat_threads t LEFT JOIN chat_messages m ON m.thread_id = t.id
+               GROUP BY t.id ORDER BY t.updated_at DESC, t.id DESC"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_chat_thread(thread_id: str) -> dict[str, Any] | None:
+    with _connect() as conn:
+        thread = conn.execute(
+            "SELECT id, title, created_at, updated_at FROM chat_threads WHERE id = ?",
+            (thread_id,),
+        ).fetchone()
+        if not thread:
+            return None
+        messages = conn.execute(
+            "SELECT role, content, timestamp FROM chat_messages WHERE thread_id = ? ORDER BY id",
+            (thread_id,),
+        ).fetchall()
+    result = dict(thread)
+    result["messages"] = [dict(row) for row in messages]
+    return result
+
+
+def save_chat_message(thread_id: str, role: str, content: str) -> None:
+    if not content.strip():
+        return
+    with _connect() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO chat_threads (id) VALUES (?)", (thread_id,)
+        )
+        conn.execute(
+            "INSERT INTO chat_messages (thread_id, role, content) VALUES (?, ?, ?)",
+            (thread_id, role, content),
+        )
+        conn.execute(
+            """UPDATE chat_threads SET updated_at = CURRENT_TIMESTAMP,
+               title = CASE WHEN title = 'New chat' AND ? = 'user'
+                             THEN SUBSTR(?, 1, 120) ELSE title END
+               WHERE id = ?""",
+            (role, content.strip(), thread_id),
+        )
+        conn.commit()
+
+
+def delete_chat_thread(thread_id: str) -> bool:
+    with _connect() as conn:
+        conn.execute("DELETE FROM chat_messages WHERE thread_id = ?", (thread_id,))
+        cur = conn.execute("DELETE FROM chat_threads WHERE id = ?", (thread_id,))
+        conn.commit()
+    return cur.rowcount > 0
 
 def log_conversation(role: str, content: str) -> None:
     if not content.strip():

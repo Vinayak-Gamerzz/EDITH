@@ -171,8 +171,17 @@ class Orchestrator:
 
     def __init__(self) -> None:
         self.history: list[dict[str, Any]] = []
+        self.thread_id: str | None = None
         self._lock = asyncio.Lock()
         self.confirm_gate = self._gate()
+
+    def activate_thread(self, thread_id: str) -> None:
+        self.thread_id = thread_id
+        thread = store.get_chat_thread(thread_id)
+        self.history = [
+            {"role": row["role"], "content": row["content"], "ts": time.time()}
+            for row in (thread or {}).get("messages", [])
+        ]
 
     # ───────────────────────────────────────────────────────────── brain entry
 
@@ -457,6 +466,8 @@ CRITICAL TWO-PHASE PROTOCOL FOR DELEGATION & TASKS:
 
         self.history.append({"role": "user", "content": enriched_user, "ts": time.time()})
         store.log_conversation("user", enriched_user[:2000])
+        if self.thread_id:
+            store.save_chat_message(self.thread_id, "user", enriched_user[:20000])
 
         # UltraThink signals a deep-reasoning request: drop the word from what
         # the model sees but spend way more compute on the turn.
@@ -897,6 +908,8 @@ CRITICAL TWO-PHASE PROTOCOL FOR DELEGATION & TASKS:
 
         self.history.append({"role": "assistant", "content": full_reply, "ts": time.time()})
         store.log_conversation("assistant", full_reply)
+        if self.thread_id:
+            store.save_chat_message(self.thread_id, "assistant", full_reply[:20000])
         await self._extract_and_save(user_text, full_reply)
         return full_reply
 

@@ -14,6 +14,7 @@
   let streamBuffer = "";
   let ackPendingDivider = false;
   let awaiting = false;
+  let currentThreadId = localStorage.getItem("zenith-active-chat") || "";
 
   const SEND_ICON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>`;
   const STOP_ICON_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5" fill="currentColor"/></svg>`;
@@ -2852,6 +2853,7 @@
     wireTerminalUI();
     wireOperatingLayerUI();
     initWS();
+    loadChatHistory();
     loadState();
     loadBriefing();
     loadVoiceConfig();
@@ -3055,6 +3057,8 @@
 
     const clearBtn = $("clear-btn");
     if (clearBtn) clearBtn.addEventListener("click", clearConversation);
+    const newChatBtn = $("new-chat-btn");
+    if (newChatBtn) newChatBtn.addEventListener("click", createNewChat);
 
     // Proactive alert bar removed — Zenith surfaces work inline, not as banners.
 
@@ -3373,14 +3377,17 @@
   }
 
   function wireDaybookTabs() {
+    const tabChats = $("tab-chats");
     const tabAgenda = $("tab-agenda");
     const tabNotes = $("tab-notes");
     const tabHomelab = $("tab-homelab");
+    const paneChats = $("pane-chats");
     const paneAgenda = $("pane-agenda");
     const paneNotes = $("pane-notes");
     const paneHomelab = $("pane-homelab");
 
     const tabs = [
+      { btn: tabChats, pane: paneChats },
       { btn: tabAgenda, pane: paneAgenda },
       { btn: tabNotes, pane: paneNotes },
       { btn: tabHomelab, pane: paneHomelab },
@@ -3664,7 +3671,8 @@
     clearTimeout(reconnectTimer);
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     try {
-      ws = new WebSocket(`${proto}//${location.host}/ws/chat`);
+      const threadParam = currentThreadId ? `?thread_id=${encodeURIComponent(currentThreadId)}` : "";
+      ws = new WebSocket(`${proto}//${location.host}/ws/chat${threadParam}`);
     } catch {
       scheduleReconnect();
       return;
@@ -3690,6 +3698,11 @@
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
       if (m.type === "pong") return;
+      if (m.type === "status" && m.thread_id) {
+        currentThreadId = m.thread_id;
+        localStorage.setItem("zenith-active-chat", currentThreadId);
+        loadChatHistory();
+      }
       // Active server event received: refresh the inactivity watchdog so long-running tasks are never prematurely aborted
       refreshWatchdog();
       if (m.type === "error" && (m.error === "forbidden" || (m.message && m.message.includes("perms")))) {
@@ -3879,6 +3892,7 @@
           finishStream(m.text);
           finishTurn();
           finishStateSoon();
+          loadChatHistory();
           logTerminal("task complete", "sys");
         } else if (m.text && m.text.audio) {
           finishStream("");
@@ -5217,15 +5231,7 @@
   }
 
   async function clearConversation() {
-    try { await fetch("/api/clear", { method: "POST" }); } catch {}
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: "clear" }));
-    $("msgs").innerHTML = resetWelcomeHTML();
-    typingEl = null;
-    streamBuffer = "";
-    ackPendingDivider = false;
-    awaiting = false;
-    setGenerating(false);
-    turnStartTs = null;
+    await createNewChat();
   }
 
   function clearChatDOM() {
@@ -5238,6 +5244,53 @@
     turnStartTs = null;
     clearConfirm();
     cancelTurn();
+  }
+
+  async function loadChatHistory() {
+    const response = await fetch("/api/chats").catch(() => null);
+    if (!response || !response.ok) return;
+    const data = await response.json();
+    const list = $("chat-history-list");
+    if (!list) return;
+    const chats = data.chats || [];
+    list.innerHTML = chats.length ? chats.map(chat => {
+      const date = chat.updated_at ? new Date(chat.updated_at.replace(" ", "T") + "Z") : null;
+      const when = date && !Number.isNaN(date.getTime()) ? date.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+      return `<button type="button" class="chat-history-item ${chat.id === currentThreadId ? "active" : ""}" data-chat-id="${esc(chat.id)}">
+        <span class="chat-history-copy"><span class="chat-history-title">${esc(chat.title || "New chat")}</span><span class="chat-history-meta">${esc(when)} · ${chat.message_count || 0} messages</span></span>
+      </button>`;
+    }).join("") : `<div class="placeholder">No chats yet.</div>`;
+    list.querySelectorAll("[data-chat-id]").forEach(button => {
+      button.addEventListener("click", () => openChat(button.dataset.chatId));
+    });
+  }
+
+  async function openChat(threadId) {
+    if (!threadId) return;
+    const response = await fetch(`/api/chats/${encodeURIComponent(threadId)}`).catch(() => null);
+    if (!response || !response.ok) return;
+    const chat = await response.json();
+    localStorage.setItem("zenith-active-chat", threadId);
+    clearChatDOM();
+    (chat.messages || []).forEach(message => {
+      const content = message.role === "user"
+        ? `<p class="r-line">${esc(message.content || "")}</p>`
+        : renderMD(message.content || "");
+      addBubble(message.role === "user" ? "user" : "assistant", content);
+    });
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "switch_chat", thread_id: threadId }));
+    } else {
+      initWS();
+    }
+    loadChatHistory();
+  }
+
+  async function createNewChat() {
+    const response = await fetch("/api/chats", { method: "POST" }).catch(() => null);
+    if (!response || !response.ok) return;
+    const chat = await response.json();
+    await openChat(chat.id);
   }
 
   /* Welcome block is a plain status header — rebuild it after clears. */
